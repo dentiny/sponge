@@ -1,3 +1,13 @@
+### How to build environment
+```
+docker build -t hao .
+docker run --name hao --mount type=bind,source=/Users/haojiang/Desktop/CS144,destination=/hao -it hao bash
+// or docker start -i hao
+./setup_dev_env.sh
+```
+
+Remember to uncomment the last line of bash completion at ``vi /root/.bashrc``.
+
 For build prereqs, see [the CS144 VM setup instructions](https://web.stanford.edu/class/cs144/vm_howto).
 
 ## Sponge quickstart
