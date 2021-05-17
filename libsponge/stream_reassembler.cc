@@ -29,6 +29,10 @@ StreamReassembler::StreamReassembler(const size_t capacity) :
 //! possibly out-of-order, from the logical stream, and assembles any newly
 //! contiguous substrings and writes them into the output stream in order.
 void StreamReassembler::push_substring(const string &data, const size_t index, const bool eof) {
+  // Note:
+  // 1. StreamReassmbler could be resued, which means after all current segments have been placed
+  // into ByteStream, another segments will come; thus bitmap must be clear after placement.
+
   // Segment's effective substring index is [start_index, end_index) in total order.
   size_t start_index = max(first_unassembled_index_, index);
   size_t end_index = min(first_unassembled_index_ + output_.remaining_capacity(), index + data.length());
