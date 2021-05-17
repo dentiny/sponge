@@ -1,5 +1,6 @@
 #include "stream_reassembler.hh"
 
+#include <cassert>
 #include <iostream>
 
 // Dummy implementation of a stream reassembler.
@@ -34,32 +35,42 @@ void StreamReassembler::push_substring(const string &data, const size_t index, c
 
   // Set bitmap and buffer.
   for (size_t idx = start_index; idx < end_index; ++idx) {
-    buffer_[idx] = data[idx - index];
-    if (!bitmap_[idx]) {
+    size_t buffer_index = idx % capacity_;
+    buffer_[buffer_index] = data[idx - index];
+    if (!bitmap_[buffer_index]) {
       ++unassembled_bytes_;
-      bitmap_[idx] = true;
+      bitmap_[buffer_index] = true;
     }
   }
 
   // Get the end index of possible submission.
-  size_t submit_end_index = first_unassembled_index_;
-  for (; submit_end_index < capacity_ && bitmap_[submit_end_index]; ++submit_end_index);
-
-  cout << "current input substring is " << data << " with index = " << index << endl;
-  cout << "submit start index = " << first_unassembled_index_ << endl;
-  cout << "submit end index = " << submit_end_index << endl;
+  size_t submit_length = 0;
+  for (int submit_start_index = first_unassembled_index_ % capacity_;
+      submit_start_index + submit_length < capacity_ &&
+      bitmap_[submit_start_index + submit_length];
+      ++submit_length);
 
   // Submit all possible characters.
-  if (submit_end_index > first_unassembled_index_) {  // there's character to submit
-    string submit_data(buffer_.begin() + first_unassembled_index_, buffer_.begin() + submit_end_index);
-    size_t nwrite = output_.write(submit_data);
-    for (size_t idx = first_unassembled_index_; idx < first_unassembled_index_ + nwrite; ++idx) {
-      bitmap_[idx] = false;
-    }
-    first_unassembled_index_ += nwrite;
-    unassembled_bytes_ -= nwrite;
+  if (submit_length > 0) {  // there's character to submit
+    // Note: considering buffer index is circular, cannot assign string value as:
+    // size_t start_buffer_index = first_unassembled_index_ % capacity_;
+    // size_t end_buffer_index = end_buffer_index % capacity_;
+    // string submit_data(buffer_.begin() + first_unassembled_index_, buffer_.begin() + submit_end_index);
+    // size_t submit_length = submit_end_index - first_unassembled_index_;
 
-    cout << "write " << nwrite << " bytes to ByteStream:" << submit_data << endl;
+    string submit_data(submit_length, 0);
+    size_t submit_end_index = first_unassembled_index_ + submit_length;
+    for (size_t idx = first_unassembled_index_; idx < submit_end_index; ++idx) {
+      submit_data[idx - first_unassembled_index_] = buffer_[idx % capacity_];
+    }
+
+    size_t nwrite = output_.write(submit_data);
+    assert(nwrite == submit_length);
+    for (size_t idx = first_unassembled_index_; idx < first_unassembled_index_ + nwrite; ++idx) {
+      bitmap_[idx % capacity_] = false;  // clear bitmap for next round's reuse
+    }
+    first_unassembled_index_ = submit_end_index;
+    unassembled_bytes_ -= nwrite;
   }
 
   // Handle EOF.
