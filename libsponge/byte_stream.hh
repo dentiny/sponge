@@ -76,7 +76,7 @@ class ByteStream {
     bool buffer_empty() const { return buffer_size_ == 0; }
 
     //! \returns `true` if the output has reached the ending
-    bool eof() const { return input_ended_ && buffer_empty(); }
+    bool eof() const { return input_ended() && buffer_empty(); }
     //!@}
 
     //! \name General accounting

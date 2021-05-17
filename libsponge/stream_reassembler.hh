@@ -4,6 +4,7 @@
 #include "byte_stream.hh"
 
 #include <cstdint>
+#include <map>
 #include <string>
 
 //! \brief A class that assembles a series of excerpts from a byte stream (possibly out of order,
@@ -11,9 +12,14 @@
 class StreamReassembler {
   private:
     // Your code here -- add private members as necessary.
-
-    ByteStream _output;  //!< The reassembled in-order byte stream
-    size_t _capacity;    //!< The maximum number of bytes
+    std::vector<bool> bitmap_;  // whether StreamReassembler has received this byte
+    std::vector<char> buffer_;
+    size_t unassembled_bytes_;
+    size_t first_unassembled_index_;
+    size_t eof_index_;
+    bool has_met_eof_;  // marks the end of ByteStream together with eof_index_
+    ByteStream output_;  //!< The reassembled in-order byte stream
+    size_t capacity_;    //!< The maximum number of bytes
 
   public:
     //! \brief Construct a `StreamReassembler` that will store up to `capacity` bytes.
@@ -33,19 +39,19 @@ class StreamReassembler {
 
     //! \name Access the reassembled byte stream
     //!@{
-    const ByteStream &stream_out() const { return _output; }
-    ByteStream &stream_out() { return _output; }
+    const ByteStream &stream_out() const { return output_; }
+    ByteStream &stream_out() { return output_; }
     //!@}
 
     //! The number of bytes in the substrings stored but not yet reassembled
     //!
     //! \note If the byte at a particular index has been pushed more than once, it
     //! should only be counted once for the purpose of this function.
-    size_t unassembled_bytes() const;
+    size_t unassembled_bytes() const { return unassembled_bytes_; }
 
     //! \brief Is the internal state empty (other than the output stream)?
     //! \returns `true` if no substrings are waiting to be assembled
-    bool empty() const;
+    bool empty() const { return unassembled_bytes_ == 0; }
 };
 
 #endif  // SPONGE_LIBSPONGE_STREAM_REASSEMBLER_HH
