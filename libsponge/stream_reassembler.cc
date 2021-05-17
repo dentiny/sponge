@@ -3,15 +3,8 @@
 #include <cassert>
 #include <iostream>
 
-// Dummy implementation of a stream reassembler.
-
 // For Lab 1, please replace with a real implementation that passes the
 // automated checks run by `make check_lab1`.
-
-// You will need to add private members to the class declaration in `stream_reassembler.hh`
-
-template <typename... Targs>
-void DUMMY_CODE(Targs &&... /* unused */) {}
 
 using namespace std;
 
@@ -32,6 +25,7 @@ void StreamReassembler::push_substring(const string &data, const size_t index, c
   // Note:
   // 1. StreamReassmbler could be resued, which means after all current segments have been placed
   // into ByteStream, another segments will come; thus bitmap must be clear after placement.
+  // 2. data received could have overlapping.
 
   // Segment's effective substring index is [start_index, end_index) in total order.
   size_t start_index = max(first_unassembled_index_, index);
