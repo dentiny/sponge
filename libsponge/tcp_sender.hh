@@ -9,8 +9,6 @@
 #include <functional>
 #include <queue>
 
-//! \brief The "sender" part of a TCP implementation.
-
 //! Accepts a ByteStream, divides it up into segments and sends the
 //! segments, keeps track of which segments are still in-flight,
 //! maintains the Retransmission Timer, and retransmits in-flight
@@ -18,19 +16,46 @@
 class TCPSender {
   private:
     //! our initial sequence number, the number for our SYN.
-    WrappingInt32 _isn;
+    WrappingInt32 isn_;
 
     //! outbound queue of segments that the TCPSender wants sent
-    std::queue<TCPSegment> _segments_out{};
+    std::queue<TCPSegment> segments_out_{};
 
     //! retransmission timer for the connection
-    unsigned int _initial_retransmission_timeout;
+    unsigned int initial_retransmission_timeout_;
 
     //! outgoing stream of bytes that have not yet been sent
-    ByteStream _stream;
+    ByteStream stream_;
 
     //! the (absolute) sequence number for the next byte to be sent
-    uint64_t _next_seqno{0};
+    uint64_t next_seqno_{0};
+
+    // consecutive retransmission #, used for TCPConnection to decide
+    // whether a segment transmission is "hopeless".
+    uint64_t consecutive_retransmissions_;
+
+    // TCP window size
+    uint16_t window_size_;
+
+    // latest ACK seq #
+    // Initialized as 0, since the ack seq # from Receiver is >= 1
+    uint64_t latest_abs_ackno_;
+
+    // whether timer works
+    bool timer_starts_;
+
+    // Timer countdown to trigger retransmission at tick().
+    int64_t timer_countdown_;
+
+    // RTO(Retransmission Timeout) for the current sent segment.
+    unsigned int RTO_;
+
+    // bytes in flight
+    uint64_t bytes_in_flight_;
+
+    // flying segments
+    // Note: flying_segments_ doesn't store retransmitted segments.
+    std::queue<TCPSegment> flying_segments_{};
 
   public:
     //! Initialize a TCPSender
@@ -40,8 +65,8 @@ class TCPSender {
 
     //! \name "Input" interface for the writer
     //!@{
-    ByteStream &stream_in() { return _stream; }
-    const ByteStream &stream_in() const { return _stream; }
+    ByteStream &stream_in() { return stream_; }
+    const ByteStream &stream_in() const { return stream_; }
     //!@}
 
     //! \name Methods that can cause the TCPSender to send a segment
@@ -66,26 +91,26 @@ class TCPSender {
     //! \brief How many sequence numbers are occupied by segments sent but not yet acknowledged?
     //! \note count is in "sequence space," i.e. SYN and FIN each count for one byte
     //! (see TCPSegment::length_in_sequence_space())
-    size_t bytes_in_flight() const;
+    uint64_t bytes_in_flight() const { return bytes_in_flight_; }
 
     //! \brief Number of consecutive retransmissions that have occurred in a row
-    unsigned int consecutive_retransmissions() const;
+    unsigned int consecutive_retransmissions() const { return consecutive_retransmissions_; }
 
     //! \brief TCPSegments that the TCPSender has enqueued for transmission.
     //! \note These must be dequeued and sent by the TCPConnection,
     //! which will need to fill in the fields that are set by the TCPReceiver
     //! (ackno and window size) before sending.
-    std::queue<TCPSegment> &segments_out() { return _segments_out; }
+    std::queue<TCPSegment> &segments_out() { return segments_out_; }
     //!@}
 
     //! \name What is the next sequence number? (used for testing)
     //!@{
 
     //! \brief absolute seqno for the next byte to be sent
-    uint64_t next_seqno_absolute() const { return _next_seqno; }
+    uint64_t next_seqno_absolute() const { return next_seqno_; }
 
     //! \brief relative seqno for the next byte to be sent
-    WrappingInt32 next_seqno() const { return wrap(_next_seqno, _isn); }
+    WrappingInt32 next_seqno() const { return wrap(next_seqno_, isn_); }
     //!@}
 };
 
