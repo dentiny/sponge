@@ -42,22 +42,21 @@ void StreamReassembler::push_substring(const string &data, const size_t index, c
   }
 
   // Get the end index of possible submission.
-  size_t submit_length = 0;
-  for (int submit_start_index = first_unassembled_index_ % capacity_;
-      submit_start_index + submit_length < capacity_ &&
-      bitmap_[submit_start_index + submit_length];
-      ++submit_length);
+  size_t submit_end_index = first_unassembled_index_;
+  for (; bitmap_[submit_end_index % capacity_] &&
+        submit_end_index < first_unassembled_index_ + capacity_;
+        ++submit_end_index);
 
   // Submit all possible characters.
-  if (submit_length > 0) {  // there's character to submit
+  if (submit_end_index > first_unassembled_index_) {  // there's character to submit
     // Note: considering buffer index is circular, cannot assign string value as:
     // size_t start_buffer_index = first_unassembled_index_ % capacity_;
     // size_t end_buffer_index = end_buffer_index % capacity_;
     // string submit_data(buffer_.begin() + first_unassembled_index_, buffer_.begin() + submit_end_index);
     // size_t submit_length = submit_end_index - first_unassembled_index_;
 
+    size_t submit_length = submit_end_index - first_unassembled_index_;
     string submit_data(submit_length, 0);
-    size_t submit_end_index = first_unassembled_index_ + submit_length;
     for (size_t idx = first_unassembled_index_; idx < submit_end_index; ++idx) {
       submit_data[idx - first_unassembled_index_] = buffer_[idx % capacity_];
     }
