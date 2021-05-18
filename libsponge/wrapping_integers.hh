@@ -4,17 +4,24 @@
 #include <cstdint>
 #include <ostream>
 
+/*
+ *                   SYN   |    c    |   a   |   t   |  FIN   
+ * seq #          | 2^32-2 |  2^32-1 |   0   |   1   |   2
+ * absolute seq # |   0    |    1    |   2   |   3   |   4
+ * stream index   |  N/A   |    0    |   1   |   2   |  N/A
+ */
+
 //! \brief A 32-bit integer, expressed relative to an arbitrary initial sequence number (ISN)
 //! \note This is used to express TCP sequence numbers (seqno) and acknowledgment numbers (ackno)
 class WrappingInt32 {
   private:
-    uint32_t _raw_value;  //!< The raw 32-bit stored integer
+    uint32_t raw_value_;  //!< The raw 32-bit stored integer
 
   public:
     //! Construct from a raw 32-bit unsigned integer
-    explicit WrappingInt32(uint32_t raw_value) : _raw_value(raw_value) {}
+    explicit WrappingInt32(uint32_t raw_value) : raw_value_(raw_value) {}
 
-    uint32_t raw_value() const { return _raw_value; }  //!< Access raw stored value
+    uint32_t raw_value() const { return raw_value_; }  //!< Access raw stored value
 };
 
 //! Transform a 64-bit absolute sequence number (zero-indexed) into a 32-bit relative sequence number

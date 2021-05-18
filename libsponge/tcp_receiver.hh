@@ -10,6 +10,14 @@
 
 //! \brief The "receiver" part of a TCP implementation.
 
+/*
+ * In TCP, acknowledgment means, “What’s the index of the next byte that the receiver
+ * need so it can reassemble more of the ByteStream?” This tells the sender what bytes
+ * it needs to send or resend. Flow control means, “What range of indices is the receiver
+ * interested and willing to receive?” (usually as a function of its remaining capacity).
+ * This tells the sender how much it’s allowed to send.
+ */
+
 //! Receives and reassembles segments into a ByteStream, and computes
 //! the acknowledgment number and window size to advertise back to the
 //! remote TCPSender.
