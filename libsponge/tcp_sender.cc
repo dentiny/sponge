@@ -96,6 +96,11 @@ void TCPSender::fill_window() {
     timer_starts_ = true;
     timer_countdown_ = RTO_;
   }
+
+  // To fully utilize window, continue packing segments if possible.
+  if (bytes_in_flight_ < window_size_) {
+    fill_window();
+  }
 }
 
 //! \param ackno The remote receiver's ackno (acknowledgment number)

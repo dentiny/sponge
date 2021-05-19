@@ -161,10 +161,10 @@ int main() {
             }
 
             const size_t window_size = uniform_int_distribution<uint16_t>{50000, 63000}(rd);
-
             TCPSenderTestHarness test{"fill_window() correctly fills a big window", cfg};
             test.execute(WriteBytes(string(bigstring)));
             test.execute(ExpectSegment{}.with_no_flags().with_syn(true).with_payload_size(0).with_seqno(isn));
+
             test.execute(AckReceived{WrappingInt32{isn + 1}}.with_win(window_size));
             test.execute(ExpectState{TCPSenderStateSummary::SYN_ACKED});
 
