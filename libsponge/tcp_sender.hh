@@ -41,6 +41,9 @@ class TCPSender {
     // Initialized as 0, since the ack seq # from Receiver is >= 1
     uint64_t latest_abs_ackno_;
 
+    // FIN seq
+    uint64_t fin_seqno_;
+
     // whether timer works
     bool timer_starts_;
 

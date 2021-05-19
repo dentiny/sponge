@@ -24,6 +24,7 @@ TCPSender::TCPSender(const size_t capacity, const uint16_t retx_timeout, const s
   consecutive_retransmissions_(0),
   window_size_(1),
   latest_abs_ackno_(0),
+  fin_seqno_(0),
   timer_starts_(false),
   timer_countdown_(initial_retransmission_timeout_),
   RTO_(initial_retransmission_timeout_),
@@ -38,9 +39,55 @@ TCPSender::TCPSender(const size_t capacity, const uint16_t retx_timeout, const s
  * in the window.
  * 4. If the receiver has announced a window size of zero, the fill window method should act
  * like the window size is one.
+ * 
+ * Steps:
+ * 1. Set SYN if needed.
+ * 2. Get payload from ByteStream.
+ * 3. Set FIN if needed.
+ * 4. Start the timer.
+ * 
+ * Data within TCPSegment to be set before sending:
+ * (1) payload
+ * (2) seqno
+ * (3) SYN, FIN
  */
 void TCPSender::fill_window() {
+  TCPSegment segment;
+  segment.header().seqno = next_seqno();
 
+  // Set SYN if needed.
+  if (next_seqno_ == 0) {
+    ++next_seqno_;
+    segment.header().syn = true;
+  }
+
+  // Set size and payload for current transmission. 
+  size_t size = max(window_size_, static_cast<decltype(window_size_)>(1));  // If received window size is 0, set it to 1.
+  size = min(TCPConfig::MAX_PAYLOAD_SIZE, size);
+  string content = stream_.read(size);
+  size = min(size, content.length());
+  if (size == 0) {  // there's no unread content within ByteStream
+    return;
+  }
+  segment.payload() = Buffer(move(content));
+  next_seqno_ += size;
+
+  // Set FIN if needed.
+  if (stream_.eof() && fin_seqno_ == 0) {
+    segment.header().fin = true;
+    fin_seqno_ = next_seqno_++;
+  }
+
+  // Segment already set, send the segment out.
+  bytes_in_flight_ += segment.length_in_sequence_space();
+  flying_segments_.push(segment);
+  segments_out_.push(segment);
+
+  // Start the timer if needed.
+  if (!timer_starts_) {
+    timer_starts_ = true;
+    timer_countdown_ = RTO_;
+  }
 }
 
 //! \param ackno The remote receiver's ackno (acknowledgment number)
