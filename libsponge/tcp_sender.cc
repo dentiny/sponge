@@ -75,7 +75,7 @@ void TCPSender::fill_window() {
 
   // Set FIN if needed.
   // NOTE: set only when window isn't full.
-  if (stream_.eof() && fin_seqno_ == 0 && window_size_ > bytes_in_flight_) {
+  if (stream_.eof() && fin_seqno_ == 0 && window_size_ > bytes_in_flight_ + size) {
     segment.header().fin = true;
     fin_seqno_ = next_seqno_++;
   }
