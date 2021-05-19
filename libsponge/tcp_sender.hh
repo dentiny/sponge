@@ -34,8 +34,8 @@ class TCPSender {
     // whether a segment transmission is "hopeless".
     uint64_t consecutive_retransmissions_;
 
-    // TCP window size
-    uint16_t window_size_;
+    // TCP window size and edge
+    uint64_t window_size_;
 
     // latest ACK seq #
     // Initialized as 0, since the ack seq # from Receiver is >= 1

@@ -62,18 +62,25 @@ void TCPSender::fill_window() {
     segment.header().syn = true;
   }
 
-  // Set size and payload for current transmission.
-  // NOTE: (1) If received window size is 0, set it to 1.
-  // (2) window-size is the maximum in-flight bytes.
-  size_t size = max(window_size_ - bytes_in_flight_, static_cast<decltype(bytes_in_flight_)>(1));  // 
-  size = min(TCPConfig::MAX_PAYLOAD_SIZE, size);
+  // Set size for current transmission.
+  size_t size;
+  if (window_size_ == 0) {  // if window-size is 0, set it to 1 to keep communication
+    size = 1;
+  } else if (window_size_ <= bytes_in_flight_) {  // window's already been full
+    size = 0;
+  } else {
+    size = min(TCPConfig::MAX_PAYLOAD_SIZE, window_size_ - bytes_in_flight_);
+  }
+
+  // Set payload for current transmission.
   string content = stream_.read(size);
-  size = min(size, content.length());
+  size = min(size, content.length());  // there could be insufficient bytes within ByteStream
   segment.payload() = Buffer(move(content));
   next_seqno_ += size;
 
   // Set FIN if needed.
-  if (stream_.eof() && fin_seqno_ == 0) {
+  // NOTE: set only when window isn't full.
+  if (stream_.eof() && fin_seqno_ == 0 && size > 0) {
     segment.header().fin = true;
     fin_seqno_ = next_seqno_++;
   }
