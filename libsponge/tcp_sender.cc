@@ -5,13 +5,8 @@
 #include <iostream>
 #include <random>
 
-// Dummy implementation of a TCP sender
-
 // For Lab 3, please replace with a real implementation that passes the
 // automated checks run by `make check_lab3`.
-
-template <typename... Targs>
-void DUMMY_CODE(Targs &&... /* unused */) {}
 
 using namespace std;
 
@@ -80,7 +75,7 @@ void TCPSender::fill_window() {
 
   // Set FIN if needed.
   // NOTE: set only when window isn't full.
-  if (stream_.eof() && fin_seqno_ == 0 && size > 0) {
+  if (stream_.eof() && fin_seqno_ == 0 && window_size_ > bytes_in_flight_) {
     segment.header().fin = true;
     fin_seqno_ = next_seqno_++;
   }
