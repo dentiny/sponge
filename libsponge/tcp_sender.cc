@@ -2,6 +2,7 @@
 
 #include "tcp_config.hh"
 
+#include <iostream>
 #include <random>
 
 // Dummy implementation of a TCP sender
@@ -65,10 +66,10 @@ void TCPSender::fill_window() {
   size_t size = max(window_size_, static_cast<decltype(window_size_)>(1));  // If received window size is 0, set it to 1.
   size = min(TCPConfig::MAX_PAYLOAD_SIZE, size);
   string content = stream_.read(size);
+
+  string content_copy = content;
+
   size = min(size, content.length());
-  if (size == 0) {  // there's no unread content within ByteStream
-    return;
-  }
   segment.payload() = Buffer(move(content));
   next_seqno_ += size;
 
@@ -78,10 +79,23 @@ void TCPSender::fill_window() {
     fin_seqno_ = next_seqno_++;
   }
 
+  // Check whether the current segment is empty: since sequence space includes
+  // SYN and FIN mark, so have to calculate just before actually sending out.
+  if (segment.length_in_sequence_space() == 0) {
+    return;
+  }
+  
   // Segment already set, send the segment out.
   bytes_in_flight_ += segment.length_in_sequence_space();
   flying_segments_.push(segment);
   segments_out_.push(segment);
+
+  if (content_copy == string("01") || content_copy == string("23")) {
+    cout << "Sending content = " << content_copy << endl;
+    cout << "after sending, bytes in flight = " << bytes_in_flight_ << endl;
+    cout << "flying segment # = " << flying_segments_.size() << endl;
+    cout << "segments out # = " << segments_out_.size() << endl;
+  }
 
   // Start the timer if needed.
   if (!timer_starts_) {
@@ -103,7 +117,7 @@ void TCPSender::fill_window() {
 void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_size) {
   // Check whether ack valid(ackno_64 < next_acknp_64).
   uint64_t abs_ack_seqno64 = unwrap(ackno, isn_, next_seqno_);
-  if (abs_ack_seqno64 >= next_seqno_) {
+  if (abs_ack_seqno64 > next_seqno_) {  // NOTE: consider SYN.
     return;
   }
 
