@@ -62,13 +62,12 @@ void TCPSender::fill_window() {
     segment.header().syn = true;
   }
 
-  // Set size and payload for current transmission. 
-  size_t size = max(window_size_, static_cast<decltype(window_size_)>(1));  // If received window size is 0, set it to 1.
+  // Set size and payload for current transmission.
+  // NOTE: (1) If received window size is 0, set it to 1.
+  // (2) window-size is the maximum in-flight bytes.
+  size_t size = max(window_size_ - bytes_in_flight_, static_cast<decltype(bytes_in_flight_)>(1));  // 
   size = min(TCPConfig::MAX_PAYLOAD_SIZE, size);
   string content = stream_.read(size);
-
-  string content_copy = content;
-
   size = min(size, content.length());
   segment.payload() = Buffer(move(content));
   next_seqno_ += size;
@@ -89,13 +88,6 @@ void TCPSender::fill_window() {
   bytes_in_flight_ += segment.length_in_sequence_space();
   flying_segments_.push(segment);
   segments_out_.push(segment);
-
-  if (content_copy == string("01") || content_copy == string("23")) {
-    cout << "Sending content = " << content_copy << endl;
-    cout << "after sending, bytes in flight = " << bytes_in_flight_ << endl;
-    cout << "flying segment # = " << flying_segments_.size() << endl;
-    cout << "segments out # = " << segments_out_.size() << endl;
-  }
 
   // Start the timer if needed.
   if (!timer_starts_) {
