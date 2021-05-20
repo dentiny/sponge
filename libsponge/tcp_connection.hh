@@ -9,17 +9,23 @@
 //! \brief A complete endpoint of a TCP connection
 class TCPConnection {
   private:
-    TCPConfig _cfg;
-    TCPReceiver _receiver{_cfg.recv_capacity};
-    TCPSender _sender{_cfg.send_capacity, _cfg.rt_timeout, _cfg.fixed_isn};
+    TCPConfig cfg_;
+    TCPReceiver receiver_{cfg_.recv_capacity};
+    TCPSender sender_{cfg_.send_capacity, cfg_.rt_timeout, cfg_.fixed_isn};
 
     //! outbound queue of segments that the TCPConnection wants sent
-    std::queue<TCPSegment> _segments_out{};
+    std::queue<TCPSegment> segments_out_{};
 
     //! Should the TCPConnection stay active (and keep ACKing)
     //! for 10 * _cfg.rt_timeout milliseconds after both streams have ended,
     //! in case the remote TCPConnection doesn't know we've received its whole stream?
-    bool _linger_after_streams_finish{true};
+    bool linger_after_streams_finish_{true};
+
+    // time since last segment received
+    size_t time_since_last_segment_received_{0};
+
+  private:
+    void reset();
 
   public:
     //! \name "Input" interface for the writer
@@ -33,7 +39,7 @@ class TCPConnection {
     size_t write(const std::string &data);
 
     //! \returns the number of `bytes` that can be written right now.
-    size_t remaining_outbound_capacity() const;
+    size_t remaining_outbound_capacity() const { return sender_.stream_in().remaining_capacity(); }
 
     //! \brief Shut down the outbound byte stream (still allows reading incoming data)
     void end_input_stream();
@@ -43,20 +49,20 @@ class TCPConnection {
     //!@{
 
     //! \brief The inbound byte stream received from the peer
-    ByteStream &inbound_stream() { return _receiver.stream_out(); }
+    ByteStream &inbound_stream() { return receiver_.stream_out(); }
     //!@}
 
     //! \name Accessors used for testing
 
     //!@{
     //! \brief number of bytes sent and not yet acknowledged, counting SYN/FIN each as one byte
-    size_t bytes_in_flight() const;
+    size_t bytes_in_flight() const { return sender_.bytes_in_flight(); }
     //! \brief number of bytes not yet reassembled
-    size_t unassembled_bytes() const;
+    size_t unassembled_bytes() const { return receiver_.unassembled_bytes(); }
     //! \brief Number of milliseconds since the last segment was received
-    size_t time_since_last_segment_received() const;
+    size_t time_since_last_segment_received() const { return time_since_last_segment_received_; }
     //!< \brief summarize the state of the sender, receiver, and the connection
-    TCPState state() const { return {_sender, _receiver, active(), _linger_after_streams_finish}; };
+    TCPState state() const { return {sender_, receiver_, active(), linger_after_streams_finish_}; };
     //!@}
 
     //! \name Methods for the owner or operating system to call
@@ -72,7 +78,7 @@ class TCPConnection {
     //! \note The owner or operating system will dequeue these and
     //! put each one into the payload of a lower-layer datagram (usually Internet datagrams (IP),
     //! but could also be user datagrams (UDP) or any other kind).
-    std::queue<TCPSegment> &segments_out() { return _segments_out; }
+    std::queue<TCPSegment> &segments_out() { return segments_out_; }
 
     //! \brief Is the connection still alive in any way?
     //! \returns `true` if either stream is still running or if the TCPConnection is lingering
@@ -81,7 +87,7 @@ class TCPConnection {
     //!@}
 
     //! Construct a new connection from a configuration
-    explicit TCPConnection(const TCPConfig &cfg) : _cfg{cfg} {}
+    explicit TCPConnection(const TCPConfig &cfg) : cfg_{cfg} {}
 
     //! \name construction and destruction
     //! moving is allowed; copying is disallowed; default construction not possible
