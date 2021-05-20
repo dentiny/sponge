@@ -25,7 +25,17 @@ class TCPConnection {
     size_t time_since_last_segment_received_{0};
 
   private:
-    void reset();
+    // Send RST segment to close connection.
+    void send_rst_segment();
+
+    // Dump receiver's information(ACK, seq #, window-size) to sending segment.
+    // NOTE: Almost every TCPSegment has an ackno, and has the ack flag set. The exceptions
+    // are just at the very beginning of the connection, before the receiver has anything to
+    // acknowledge. 
+    void dump_receiver_information(TCPSegment& seg);
+
+    // Get sender's segment outs into self's.
+    void send_out_segment();
 
   public:
     //! \name "Input" interface for the writer

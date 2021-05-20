@@ -14,9 +14,6 @@
  * it will set the ack flag and the fields in the TCPSegment.
  */
 
-template <typename... Targs>
-void DUMMY_CODE(Targs &&... /* unused */) {}
-
 using namespace std;
 
 /* 
@@ -37,13 +34,22 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
     receiver_.stream_out().set_error();
     return;
   }
+
+  // Reset linger_after_streams_finish_ if the inbound stream ends before the TCPConnection
+  // has reached EOF on its outbound stream.
+  // NOTE: dumping to receiver could lead to its ending.
   receiver_.segment_received(seg);
+  if (receiver_.stream_out().eof() && !sender_.stream_in().eof()) {
+    linger_after_streams_finish_ = false;
+  }
+
   if (seg.header().ack) {
     sender_.ack_received(seg.header().ackno, seg.header().win);
   }
   if (seg.header().seqno != WrappingInt32{0} /* initial seq # */) {
     sender_.fill_window();
   }
+  send_out_segment();
 }
 
 /*
@@ -66,14 +72,15 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
  */
 bool TCPConnection::active() const {
   bool is_shutdown_cleanly = receiver_.stream_out().eof() && sender_.stream_in().eof()
-    && sender_.bytes_in_flight() == 0;  // TODO: prereq 4
+    && sender_.bytes_in_flight() == 0 && time_since_last_segment_received_ >= 10 * cfg_.rt_timeout;
   bool is_shutdown_uncleanly = sender_.stream_in().error() && receiver_.stream_out().error();
   return !(is_shutdown_cleanly && is_shutdown_uncleanly);
 }
 
 size_t TCPConnection::write(const string &data) {
   size_t nwriten = sender_.stream_in().write(data);
-  // TODO: ask sender to send
+  sender_.fill_window();
+  send_out_segment();
   return nwriten;
 }
 
@@ -82,19 +89,26 @@ void TCPConnection::tick(const size_t ms_since_last_tick) {
   sender_.tick(ms_since_last_tick);
   time_since_last_segment_received_ += ms_since_last_tick;
   if (sender_.consecutive_retransmissions() > TCPConfig::MAX_RETX_ATTEMPTS) {
-    reset();
+    send_rst_segment();
   }
 }
 
-void TCPConnection::end_input_stream() {}
+void TCPConnection::end_input_stream() {
+  sender_.stream_in().end_input();
+  sender_.fill_window();
+  send_out_segment();
+}
 
-void TCPConnection::connect() {}
+void TCPConnection::connect() {
+  sender_.fill_window();  // send ACK to start communication
+  send_out_segment();
+}
 
 TCPConnection::~TCPConnection() {
   try {
     if (active()) {
       cerr << "Warning: Unclean shutdown of TCPConnection\n";
-      reset();
+      send_rst_segment();
     }
   } catch (const exception &e) {
     std::cerr << "Exception destructing TCP FSM: " << e.what() << std::endl;
@@ -105,11 +119,29 @@ TCPConnection::~TCPConnection() {
 // Two possible causes:
 // 1. consecutive retransmissions exceeds the threshold
 // 2. break the current TCP connection(dtor invoked)
-void TCPConnection::reset() {
+void TCPConnection::send_rst_segment() {
   TCPSegment segment;
   segment.header().rst = true;
   segment.header().seqno = sender_.next_seqno();  // no need to increment the seq #
   segments_out_.push(segment);
   sender_.stream_in().set_error();
   receiver_.stream_out().set_error();
+}
+
+void TCPConnection::dump_receiver_information(TCPSegment& seg) {
+  auto ackno_opt = receiver_.ackno();
+  if (ackno_opt.has_value()) {
+    seg.header().ack = true;
+    seg.header().ackno = ackno_opt.value();
+    seg.header().win = receiver_.window_size();
+  }
+}
+
+void TCPConnection::send_out_segment() {
+  while (!sender_.segments_out().empty()) {
+    TCPSegment& seg = sender_.segments_out().front();
+    dump_receiver_information(seg);
+    segments_out_.push(seg);
+    sender_.segments_out().pop();
+  }
 }
