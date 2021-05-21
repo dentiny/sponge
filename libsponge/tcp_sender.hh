@@ -115,6 +115,9 @@ class TCPSender {
     //! \brief relative seqno for the next byte to be sent
     WrappingInt32 next_seqno() const { return wrap(next_seqno_, isn_); }
     //!@}
+
+    // Used at TCPConnection to make sure TCPSender has completed.
+    bool is_fin_sent() const { return fin_seqno_ != 0; }
 };
 
 #endif  // SPONGE_LIBSPONGE_TCP_SENDER_HH

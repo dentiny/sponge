@@ -32,7 +32,7 @@ class TCPConnection {
     // NOTE: Almost every TCPSegment has an ackno, and has the ack flag set. The exceptions
     // are just at the very beginning of the connection, before the receiver has anything to
     // acknowledge. 
-    void dump_receiver_information(TCPSegment& seg);
+    void dump_receiver_information(TCPSegment *seg);
 
     // Get sender's segment outs into self's.
     void send_out_segment();

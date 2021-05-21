@@ -5,15 +5,6 @@
 // For Lab 4, please replace with a real implementation that passes the
 // automated checks run by `make check`.
 
-/*
- * For sending a segment:
- * 1. Any time the TCPSender has pushed a segment onto its outgoing queue, having set
- * the fields it’s responsible for on outgoing segments: (seqno, syn , payload, and fin).
- * 2. Before sending the segment, the TCPConnection will ask the TCPReceiver for the fields
- * it’s responsible for on outgoing segments: ackno and window size. If there is an ackno,
- * it will set the ack flag and the fields in the TCPSegment.
- */
-
 using namespace std;
 
 /* 
@@ -29,6 +20,7 @@ using namespace std;
  * window size.
  */
 void TCPConnection::segment_received(const TCPSegment &seg) {
+  // Set error state on TCPSender and TCPReceiver's state, wait to shutdown uncleanly.
   if (seg.header().rst) {
     sender_.stream_in().set_error();
     receiver_.stream_out().set_error();
@@ -43,9 +35,14 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
     linger_after_streams_finish_ = false;
   }
 
+  // If the ack flag is set, tells the TCPSender about ackno and window size.
   if (seg.header().ack) {
     sender_.ack_received(seg.header().ackno, seg.header().win);
   }
+
+  // If the incoming segment occupied any sequence numbers, the TCPConnection makes sure
+  // that at least one segment is sent in reply, to reflect an update in the ackno and
+  // window size.
   if (seg.header().seqno != WrappingInt32{0} /* initial seq # */) {
     sender_.fill_window();
   }
@@ -71,10 +68,13 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
  * Both sender's and receiver's ByteStream are at error state.
  */
 bool TCPConnection::active() const {
-  bool is_shutdown_cleanly = receiver_.stream_out().eof() && sender_.stream_in().eof()
-    && sender_.bytes_in_flight() == 0 && time_since_last_segment_received_ >= 10 * cfg_.rt_timeout;
+  bool is_shutdown_cleanly =
+    receiver_.stream_out().eof() // The inbound stream has been fully assembled and has ended.
+    && sender_.stream_in().eof() && sender_.is_fin_sent() // The outbound stream has been ended by the local application and fully sent
+    && sender_.bytes_in_flight() == 0 // The outbound stream has been fully acknowledged by the remote peer.
+    && linger_after_streams_finish_ && time_since_last_segment_received_ >= 10 * cfg_.rt_timeout;  // lingering after both streams end
   bool is_shutdown_uncleanly = sender_.stream_in().error() && receiver_.stream_out().error();
-  return !(is_shutdown_cleanly && is_shutdown_uncleanly);
+  return !(is_shutdown_cleanly || is_shutdown_uncleanly);
 }
 
 size_t TCPConnection::write(const string &data) {
@@ -91,6 +91,7 @@ void TCPConnection::tick(const size_t ms_since_last_tick) {
   if (sender_.consecutive_retransmissions() > TCPConfig::MAX_RETX_ATTEMPTS) {
     send_rst_segment();
   }
+  send_out_segment();
 }
 
 void TCPConnection::end_input_stream() {
@@ -128,19 +129,33 @@ void TCPConnection::send_rst_segment() {
   receiver_.stream_out().set_error();
 }
 
-void TCPConnection::dump_receiver_information(TCPSegment& seg) {
+void TCPConnection::dump_receiver_information(TCPSegment *seg) {
   auto ackno_opt = receiver_.ackno();
   if (ackno_opt.has_value()) {
-    seg.header().ack = true;
-    seg.header().ackno = ackno_opt.value();
-    seg.header().win = receiver_.window_size();
+    seg->header().ack = true;
+    seg->header().ackno = ackno_opt.value();
+    seg->header().win = receiver_.window_size();
   }
 }
 
+/*
+ * How to send a segment:
+ * Except the very beginning SYN(invoked at connect()),
+ * (1) sender.fill_window();
+ * (2) send_out_segment() to move TCPSender's segments all into TCPConnection's.
+ * (3) Check whether to add TCPReceiver's information, eg: window-size, ack seq #
+ * 
+ * For sending a segment:
+ * 1. Any time the TCPSender has pushed a segment onto its outgoing queue, having set
+ * the fields it’s responsible for on outgoing segments: (seqno, syn , payload, and fin).
+ * 2. Before sending the segment, the TCPConnection will ask the TCPReceiver for the fields
+ * it’s responsible for on outgoing segments: ackno and window size. If there is an ackno,
+ * it will set the ack flag and the fields in the TCPSegment.
+ */
 void TCPConnection::send_out_segment() {
   while (!sender_.segments_out().empty()) {
     TCPSegment& seg = sender_.segments_out().front();
-    dump_receiver_information(seg);
+    dump_receiver_information(&seg);
     segments_out_.push(seg);
     sender_.segments_out().pop();
   }
