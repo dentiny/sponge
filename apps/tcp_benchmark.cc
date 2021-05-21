@@ -11,18 +11,18 @@ using namespace std::chrono;
 
 constexpr size_t len = 100 * 1024 * 1024;
 
-void move_segments(TCPConnection &x, TCPConnection &y, vector<TCPSegment> &segments, const bool reorder) {
-    while (not x.segments_out().empty()) {
-        segments.emplace_back(move(x.segments_out().front()));
-        x.segments_out().pop();
+void move_segments(TCPConnection &from, TCPConnection &to, vector<TCPSegment> &segments, const bool reorder) {
+    while (!from.segments_out().empty()) {
+        segments.emplace_back(move(from.segments_out().front()));
+        from.segments_out().pop();
     }
     if (reorder) {
         for (auto it = segments.rbegin(); it != segments.rend(); ++it) {
-            y.segment_received(move(*it));
+            to.segment_received(move(*it));
         }
     } else {
         for (auto it = segments.begin(); it != segments.end(); ++it) {
-            y.segment_received(move(*it));
+            to.segment_received(move(*it));
         }
     }
     segments.clear();
@@ -30,7 +30,8 @@ void move_segments(TCPConnection &x, TCPConnection &y, vector<TCPSegment> &segme
 
 void main_loop(const bool reorder) {
     TCPConfig config;
-    TCPConnection x{config}, y{config};
+    TCPConnection client{config};
+    TCPConnection server{config};
 
     string string_to_send(len, 'x');
     for (auto &ch : string_to_send) {
@@ -38,10 +39,10 @@ void main_loop(const bool reorder) {
     }
 
     Buffer bytes_to_send{string(string_to_send)};
-    x.connect();
-    y.end_input_stream();
+    client.connect();  // add SYN to client's segment_out
+    server.end_input_stream();  // close server's write-end(server only reads)
 
-    bool x_closed = false;
+    bool client_closed = false;
 
     string string_received;
     string_received.reserve(len);
@@ -49,38 +50,39 @@ void main_loop(const bool reorder) {
     const auto first_time = high_resolution_clock::now();
 
     auto loop = [&] {
-        // write input into x
-        while (bytes_to_send.size() and x.remaining_outbound_capacity()) {
-            const auto want = min(x.remaining_outbound_capacity(), bytes_to_send.size());
-            const auto written = x.write(string(bytes_to_send.str().substr(0, want)));
+        // write input into client
+        while (bytes_to_send.size() != 0 && client.remaining_outbound_capacity() != 0) {
+            const auto want = min(client.remaining_outbound_capacity(), bytes_to_send.size());
+            const auto written = client.write(string(bytes_to_send.str().substr(0, want)));  // add bytes into client's segment out
             if (want != written) {
                 throw runtime_error("want = " + to_string(want) + ", written = " + to_string(written));
             }
-            bytes_to_send.remove_prefix(written);
+            bytes_to_send.remove_prefix(written);  // remove sent bytes from bytes-to-send
         }
 
-        if (bytes_to_send.size() == 0 and not x_closed) {
-            x.end_input_stream();
-            x_closed = true;
+        // All bytes to send has been added to client's segment out.
+        if (bytes_to_send.size() == 0 && !client_closed) {
+            client.end_input_stream();  // close client's write-end(only leaves its read-end)
+            client_closed = true;
         }
 
-        // exchange segments between x and y but in reverse order
+        // exchange segments between client and server but in reverse order
         vector<TCPSegment> segments;
-        move_segments(x, y, segments, reorder);
-        move_segments(y, x, segments, false);
+        move_segments(client, server, segments, reorder);
+        move_segments(server, client, segments, false);
 
-        // read output from y
-        const auto available_output = y.inbound_stream().buffer_size();
+        // read output from server
+        const auto available_output = server.inbound_stream().buffer_size();
         if (available_output > 0) {
-            string_received.append(y.inbound_stream().read(available_output));
+            string_received.append(server.inbound_stream().read(available_output));
         }
 
         // time passes
-        x.tick(1000);
-        y.tick(1000);
+        client.tick(1000);
+        server.tick(1000);
     };
 
-    while (not y.inbound_stream().eof()) {
+    while (!server.inbound_stream().eof()) {
         loop();
     }
 
@@ -98,7 +100,7 @@ void main_loop(const bool reorder) {
     cout << "CPU-limited throughput" << (reorder ? " with reordering: " : "                : ") << gigabits_per_second
          << " Gbit/s\n";
 
-    while (x.active() or y.active()) {
+    while (client.active() or server.active()) {
         loop();
     }
 }
